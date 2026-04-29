@@ -1,36 +1,15 @@
-# @veclabs/solvec
+# recall-sdk-js
 
-TypeScript SDK for VecLabs - decentralized vector memory for AI agents.
+TypeScript / JavaScript SDK for [VecLabs Recall](https://github.com/veclabs/recall) — decentralized vector memory for AI agents.
 
-Rust HNSW search engine. Solana on-chain Merkle proofs. Pinecone-compatible API.
+[![npm](https://img.shields.io/badge/npm-%40veclabs%2Fsolvec-orange.svg)](https://www.npmjs.com/package/@veclabs/solvec)
+[![Version](https://img.shields.io/badge/version-0.1.0--alpha.9-blue.svg)]()
+[![Tests](https://img.shields.io/badge/tests-27%20passing-brightgreen.svg)]()
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
 
-## Hosted Mode (Recommended)
-
-```typescript
-import { SolVec } from '@veclabs/solvec';
-
-// Get your API key at app.veclabs.xyz
-const sv = new SolVec({ apiKey: 'vl_live_...' });
-const collection = sv.collection('agent-memory', { dimensions: 1536 });
-
-// All operations route to api.veclabs.xyz
-await collection.upsert([{
-  id: 'mem_001',
-  values: embedding,
-  metadata: { text: 'User prefers dark mode' }
-}]);
-
-const results = await collection.query({ vector: queryEmbedding, topK: 5 });
-const proof = await collection.verify();
-```
-
-## Self-Hosted Mode
-
-[![npm version](https://img.shields.io/npm/v/@veclabs/solvec.svg)](https://www.npmjs.com/package/@veclabs/solvec)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/veclabs/veclabs/blob/main/LICENSE)
-[![Tests](https://img.shields.io/badge/tests-9%20passing-brightgreen.svg)](https://github.com/veclabs/veclabs)
+## Install
 
 ```bash
 npm install @veclabs/solvec
@@ -38,39 +17,23 @@ npm install @veclabs/solvec
 
 ---
 
-## What this is
-
-A vector database SDK that stores your embeddings on decentralized storage, posts a cryptographic Merkle root to Solana after every write, and queries them through a Rust HNSW engine at sub-5ms p99.
-
-If you are currently using Pinecone, the API is intentionally identical. Migration is three line changes.
-
----
-
-## Quick start
+## Quick Start
 
 ```typescript
 import { SolVec } from '@veclabs/solvec';
 
-const sv = new SolVec({ network: 'devnet' });
-const collection = sv.collection('agent-memory', { dimensions: 768 });
+const sv = new SolVec({ apiKey: 'your-api-key' });
+const collection = sv.collection('agent-memory', { dimensions: 1536 });
 
-// Store vectors
-await collection.upsert([
-  {
-    id: 'mem_001',
-    values: [...],  // your embedding - any dimension
-    metadata: { text: 'User is Alex, building a fintech startup' }
-  }
-]);
+// Upsert vectors
+await collection.upsert([{
+  id: 'mem_001',
+  values: [...],
+  metadata: { text: 'User prefers dark mode' }
+}]);
 
-// Search by similarity
-const results = await collection.query({
-  vector: [...],
-  topK: 5
-});
-
-console.log(results.matches);
-// [{ id: 'mem_001', score: 0.97, metadata: { text: '...' } }, ...]
+// Query
+const results = await collection.query({ vector: [...], topK: 5 });
 
 // Verify collection integrity against on-chain Merkle root
 const proof = await collection.verify();
@@ -79,7 +42,131 @@ console.log(proof.solanaExplorerUrl);
 
 ---
 
+## Authentication
+
+Get an API key at [app.veclabs.xyz](https://app.veclabs.xyz).
+
+```typescript
+const sv = new SolVec({ apiKey: process.env.RECALL_API_KEY });
+```
+
+**Self-hosted with Shadow Drive** (bring your own Solana wallet):
+
+```typescript
+const sv = new SolVec({
+  network: 'devnet',
+  wallet: '/path/to/keypair.json',
+  shadowDrive: true
+});
+```
+
+---
+
+## API Reference
+
+### `sv.collection(name, options?)`
+
+Returns a collection handle. Creates the collection on first write.
+
+```typescript
+const collection = sv.collection('my-collection', {
+  dimensions: 1536   // required on first write, inferred after
+});
+```
+
+### `collection.upsert(vectors)`
+
+Insert or update vectors. Each vector requires `id` and `values`. `metadata` is optional.
+
+```typescript
+await collection.upsert([
+  { id: 'v1', values: [...], metadata: { source: 'gpt-4' } },
+  { id: 'v2', values: [...] }
+]);
+```
+
+After every upsert, a SHA-256 Merkle root of all vector IDs is posted to the Solana Anchor program on-chain.
+
+### `collection.query(params)`
+
+Nearest-neighbor search. Returns top-k results with scores and metadata.
+
+```typescript
+const results = await collection.query({
+  vector: [...],
+  topK: 10,               // default: 10
+  includeMetadata: true,  // default: true
+  includeValues: false    // default: false
+});
+
+// results.matches: [{ id, score, metadata }]
+```
+
+Supports `cosine` (default), `euclidean`, and `dot` distance metrics.
+
+### `collection.delete(ids)`
+
+Delete vectors by ID.
+
+```typescript
+await collection.delete(['v1', 'v2']);
+```
+
+### `collection.verify()`
+
+Fetches the on-chain Merkle root from Solana and verifies it against the current collection state. Returns a proof object with a Solana Explorer URL.
+
+```typescript
+const proof = await collection.verify();
+// proof.valid: boolean
+// proof.onChainRoot: string
+// proof.computedRoot: string
+// proof.solanaExplorerUrl: string
+```
+
+### `collection.stats()`
+
+Returns collection statistics.
+
+```typescript
+const stats = await collection.stats();
+// stats.vectorCount: number
+// stats.dimensions: number
+// stats.merkleRoot: string
+```
+
+---
+
+## Memory Inspector
+
+The SDK ships with a Memory Inspector for debugging agent memory state:
+
+```typescript
+import { MemoryInspector } from '@veclabs/solvec';
+
+const inspector = new MemoryInspector(collection);
+const result = await inspector.inspect('mem_001');
+// result.record: MemoryRecord
+// result.merkleProof: string[]
+// result.verified: boolean
+```
+
+Web component for visual inspection:
+
+```bash
+npm install @veclabs/inspector-ui
+```
+
+```html
+<script type="module" src="node_modules/@veclabs/inspector-ui/dist/inspector.js"></script>
+<recall-inspector api-key="your-key" collection="agent-memory"></recall-inspector>
+```
+
+---
+
 ## Migrating from Pinecone
+
+The API is intentionally shaped to match Pinecone's client. Migration is three line changes:
 
 ```typescript
 // Before
@@ -87,229 +174,54 @@ import { Pinecone } from '@pinecone-database/pinecone';
 const pc = new Pinecone({ apiKey: 'YOUR_KEY' });
 const index = pc.index('my-index');
 
-// After - change 3 lines
+// After
 import { SolVec } from '@veclabs/solvec';
-const sv = new SolVec({ network: 'mainnet-beta' });
+const sv = new SolVec({ apiKey: 'YOUR_KEY' });
 const index = sv.collection('my-index');
 
-// Everything below is identical
-await index.upsert([{ id: 'vec_001', values: [...], metadata: {} }]);
-const results = await index.query({ vector: [...], topK: 10 });
-
-// New - Pinecone has no equivalent
-const proof = await index.verify();
+// Everything below stays identical
+await index.upsert({ vectors: [...] });
+await index.query({ vector: [...], topK: 10 });
+await index.verify();  // new — Pinecone has no equivalent
 ```
 
 ---
 
-## API Reference
+## Status
 
-### `new SolVec(config)`
-
-Creates a new SolVec client.
-
-```typescript
-const sv = new SolVec({
-  network: "devnet", // 'mainnet-beta' | 'devnet' | 'localnet'
-  walletPath: "~/.config/solana/id.json", // optional - required for on-chain writes
-  rpcUrl: "https://...", // optional - custom RPC endpoint
-});
-```
-
-### `sv.collection(name, config?)`
-
-Returns a `SolVecCollection` instance. Equivalent to Pinecone's `index()`.
-
-```typescript
-const collection = sv.collection("my-collection", {
-  dimensions: 768, // default: 1536
-  metric: "cosine", // 'cosine' | 'euclidean' | 'dot' - default: 'cosine'
-});
-```
+| Feature                  | Status                          |
+| ------------------------ | ------------------------------- |
+| Hosted API (api key mode)| ✅ Live                         |
+| Shadow Drive (self-host) | ✅ Available — `shadowDrive: true` |
+| Merkle verification      | ✅ Complete                     |
+| Memory Inspector         | ✅ Shipped (Phase 6)            |
+| WASM Rust bridge         | 🔄 In progress (JS fallback now)|
+| LangChain integration    | 📋 Planned                      |
+| LlamaIndex integration   | 📋 Planned                      |
 
 ---
 
-### `collection.upsert(records)`
+## Related
 
-Insert or update vectors. If a record with the same `id` already exists, it is overwritten.
-
-```typescript
-await collection.upsert([
-  {
-    id: 'vec_001',              // required - unique string identifier
-    values: [0.1, 0.2, ...],   // required - float array, length must match dimensions
-    metadata: {                 // optional - any JSON-serializable object
-      text: 'source text',
-      timestamp: Date.now(),
-      category: 'memory'
-    }
-  }
-]);
-// Returns: { upsertedCount: 1 }
-```
-
-### `collection.query(options)`
-
-Search for nearest neighbors by vector similarity.
-
-```typescript
-const results = await collection.query({
-  vector: [0.1, 0.2, ...],   // required - query embedding
-  topK: 10,                  // required - number of results
-  filter: { category: 'memory' },  // optional - metadata filter
-  includeMetadata: true,     // optional - default: true
-  includeValues: false,      // optional - default: false
-});
-
-// results.matches is sorted by score descending
-for (const match of results.matches) {
-  console.log(match.id, match.score, match.metadata);
-}
-```
-
-### `collection.delete(ids)`
-
-Delete vectors by ID.
-
-```typescript
-await collection.delete(["vec_001", "vec_002"]);
-```
-
-### `collection.fetch(ids)`
-
-Fetch specific vectors by ID.
-
-```typescript
-const result = await collection.fetch(["vec_001"]);
-console.log(result.vectors["vec_001"].values);
-```
-
-### `collection.describeIndexStats()`
-
-Get collection statistics.
-
-```typescript
-const stats = await collection.describeIndexStats();
-// {
-//   vectorCount: 1000,
-//   dimension: 768,
-//   metric: 'cosine',
-//   name: 'my-collection',
-//   merkleRoot: 'a3f9b2...',
-//   lastUpdated: 1709123456,
-//   isFrozen: false
-// }
-```
-
-### `collection.verify()`
-
-Verify collection integrity against the on-chain Merkle root.
-
-```typescript
-const proof = await collection.verify();
-// {
-//   verified: true,
-//   onChainRoot: 'a3f9b2...',
-//   localRoot: 'a3f9b2...',
-//   match: true,
-//   vectorCount: 1000,
-//   solanaExplorerUrl: 'https://explorer.solana.com/...',
-//   timestamp: 1709123456000
-// }
-```
+- **Rust core engine** → [`veclabs/recall`](https://github.com/veclabs/recall)
+- **Python SDK** → [`veclabs/recall-sdk-python`](https://github.com/veclabs/recall-sdk-python)
+- **Hosted API** → [api.veclabs.xyz](https://api.veclabs.xyz)
+- **Dashboard** → [app.veclabs.xyz](https://app.veclabs.xyz)
 
 ---
 
-## Integration examples
+## Contributing
 
-### LangChain
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-```typescript
-import { SolVec } from "@veclabs/solvec";
-import { OpenAIEmbeddings } from "langchain/embeddings/openai";
-import { VectorStore } from "langchain/vectorstores/base";
-
-// Use SolVec as a drop-in VectorStore (native integration coming soon)
-const sv = new SolVec({ network: "mainnet-beta" });
-const collection = sv.collection("langchain-docs", { dimensions: 1536 });
-
-// Store document embeddings
-const embeddings = new OpenAIEmbeddings();
-const vectors = await embeddings.embedDocuments(docs.map((d) => d.pageContent));
-
-await collection.upsert(
-  vectors.map((values, i) => ({
-    id: `doc_${i}`,
-    values,
-    metadata: { text: docs[i].pageContent, source: docs[i].metadata.source },
-  })),
-);
-
-// Query
-const queryVector = await embeddings.embedQuery("What is VecLabs?");
-const results = await collection.query({ vector: queryVector, topK: 3 });
-```
-
-### AI agent persistent memory
-
-```typescript
-import { SolVec } from "@veclabs/solvec";
-
-const sv = new SolVec({ network: "mainnet-beta" });
-const memory = sv.collection("agent-memory", { dimensions: 768 });
-
-async function rememberFact(text: string, embedding: number[]) {
-  await memory.upsert([
-    {
-      id: `mem_${Date.now()}`,
-      values: embedding,
-      metadata: { text, timestamp: Date.now() },
-    },
-  ]);
-}
-
-async function recallRelevantFacts(queryEmbedding: number[], limit = 5) {
-  const results = await memory.query({ vector: queryEmbedding, topK: limit });
-  return results.matches.map((m) => m.metadata?.text as string);
-}
-
-// Verify what the agent remembers is unmodified
-async function auditMemory() {
-  const proof = await memory.verify();
-  console.log("Memory verified:", proof.match);
-  console.log("On-chain proof:", proof.solanaExplorerUrl);
-}
-```
-
----
-
-## Current status
-
-This is alpha software. The API surface is stable.
-
-| Feature                         | Status                            |
-| ------------------------------- | --------------------------------- |
-| upsert / query / delete / fetch | Working                           |
-| Cosine, euclidean, dot product  | Working                           |
-| Merkle root computation         | Working                           |
-| verify()                        | Working (local computation)       |
-| Solana on-chain Merkle updates  | In progress                       |
-| Shadow Drive persistence        | In progress - in-memory for now   |
-| WASM Rust HNSW bridge           | In progress - JS fallback for now |
-
-Vectors are currently stored in-memory. Persistent decentralized storage via Shadow Drive is in active development and ships in v0.2.0.
-
----
-
-## Links
-
-- Homepage: [veclabs.xyz](https://veclabs.xyz)
-- GitHub: [github.com/veclabs/veclabs](https://github.com/veclabs/veclabs)
-- PyPI: [pypi.org/project/solvec](https://pypi.org/project/solvec)
-- Live on Solana devnet: [explorer.solana.com](https://explorer.solana.com/address/8xjQ2XrdhR4JkGAdTEB7i34DBkbrLRkcgchKjN1Vn5nP?cluster=devnet)
+Priority: LangChain integration, AutoGen integration, additional framework adapters.
 
 ---
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
+
+---
+
+[veclabs.xyz](https://veclabs.xyz) · [@veclabs](https://x.com/veclabs46369) · [Discord](https://discord.gg/veclabs)
