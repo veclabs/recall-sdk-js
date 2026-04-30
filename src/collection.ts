@@ -128,7 +128,8 @@ export class SolVecCollection {
   }
 
   private _getDbPath(): string {
-    return path.join(process.cwd(), '.veclabs', `${this.name}.db`);
+    const base = (process.env.VERCEL ?? process.env.AWS_LAMBDA_FUNCTION_NAME) ? '/tmp' : process.cwd();
+    return path.join(base, '.veclabs', `${this.name}.db`);
   }
 
   private _persist(): void {
