@@ -1,7 +1,10 @@
-import type { WasmHNSWIndex as WasmIndexType } from '../../../crates/solvec-wasm/pkg-node/solvec_wasm';
+
 import * as nodePath from 'path';
 
-type WasmModule = typeof import('../../../crates/solvec-wasm/pkg-node/solvec_wasm');
+// WasmHNSWIndex type — defined locally to avoid monorepo path dependency
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WasmIndexType = any;
+type WasmModule = any;
 
 let wasmModule: WasmModule | null = null;
 let wasmLoadAttempted = false;
