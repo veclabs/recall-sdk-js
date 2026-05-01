@@ -1,11 +1,8 @@
-
 import * as nodePath from 'path';
+import * as fs from 'fs';
 
-// WasmHNSWIndex type — defined locally to avoid monorepo path dependency
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type WasmIndexType = any;
 type WasmModule = any;
-
 let wasmModule: WasmModule | null = null;
 let wasmLoadAttempted = false;
 
@@ -13,33 +10,33 @@ export async function loadWasm(): Promise<WasmModule | null> {
   if (wasmLoadAttempted) return wasmModule;
   wasmLoadAttempted = true;
 
-  // Browser / client-component context: nodejs-target WASM cannot run here.
   const isBrowser = typeof (globalThis as { window?: unknown }).window !== 'undefined';
   if (isBrowser) {
     console.warn('[SolVec] WASM unavailable in browser context, using JS fallback');
     return null;
   }
 
-  // Vercel production: NEXT_PUBLIC_VERCEL_URL is injected at build time.
-  // Load the nodejs-target WASM module from public/wasm/, which Vercel makes
-  // available on the serverless-function filesystem alongside static assets.
-  // The path is built at runtime so Turbopack cannot trace it at build time.
-  if (process.env.NEXT_PUBLIC_VERCEL_URL) {
+  // Vercel production — load WASM binary directly via fs + WebAssembly API
+  // Avoids dynamic require() which Turbopack rejects
+  if (process.env.NEXT_PUBLIC_VERCEL_URL || process.env.VERCEL) {
     try {
-      const wasmJsPath = nodePath.join(process.cwd(), 'public', 'wasm', 'solvec_wasm');
+      const wasmBinaryPath = nodePath.join(process.cwd(), 'wasm', 'solvec_wasm_bg.wasm');
+      const wasmBinary = fs.readFileSync(wasmBinaryPath);
+      const parts = [process.cwd(), 'wasm', 'solvec_wasm'];
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      wasmModule = require(wasmJsPath) as WasmModule;
-      console.log('[SolVec] Rust HNSW engine loaded from /public/wasm (Vercel)');
+      const glue = require(parts.join(nodePath.sep)) as WasmModule;
+      const wasmInstance = await WebAssembly.instantiate(wasmBinary, glue.__wbindgen_placeholder__ ?? {});
+      glue.__wbg_init?.(wasmInstance);
+      wasmModule = glue;
+      console.log('[SolVec] Rust HNSW engine loaded (Vercel)');
     } catch (e) {
-      console.warn('[SolVec] WASM unavailable from public/wasm, using JS fallback:', e);
+      console.warn('[SolVec] WASM unavailable on Vercel, using JS fallback:', e);
       wasmModule = null;
     }
     return wasmModule;
   }
 
-  // Local Node.js: tests and local dev (no NEXT_PUBLIC_VERCEL_URL).
-  // Path is constructed at runtime via array-join so bundlers (Turbopack/webpack)
-  // cannot statically resolve it and will not fail the build if pkg-node is absent.
+  // Local Node.js
   try {
     const segments = ['..', 'wasm', 'solvec_wasm'];
     const pkgPath = segments.join('/');
@@ -50,12 +47,10 @@ export async function loadWasm(): Promise<WasmModule | null> {
     console.warn('[SolVec] WASM unavailable, using JS fallback:', e);
     wasmModule = null;
   }
-
   return wasmModule;
 }
 
 export function getWasm(): WasmModule | null {
   return wasmModule;
 }
-
 export type { WasmIndexType };
