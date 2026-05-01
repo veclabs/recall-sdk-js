@@ -41,7 +41,7 @@ export async function loadWasm(): Promise<WasmModule | null> {
   // Path is constructed at runtime via array-join so bundlers (Turbopack/webpack)
   // cannot statically resolve it and will not fail the build if pkg-node is absent.
   try {
-    const segments = ['..', '..', '..', 'crates', 'solvec-wasm', 'pkg-node', 'solvec_wasm'];
+    const segments = ['..', 'wasm', 'solvec_wasm'];
     const pkgPath = segments.join('/');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     wasmModule = require(pkgPath) as WasmModule;
