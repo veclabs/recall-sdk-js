@@ -1,6 +1,5 @@
 import * as nodePath from 'path';
 import * as fs from 'fs';
-
 type WasmIndexType = any;
 type WasmModule = any;
 let wasmModule: WasmModule | null = null;
@@ -21,12 +20,18 @@ export async function loadWasm(): Promise<WasmModule | null> {
   if (process.env.NEXT_PUBLIC_VERCEL_URL || process.env.VERCEL) {
     try {
       const wasmBinaryPath = nodePath.join(process.cwd(), 'wasm', 'solvec_wasm_bg.wasm');
+      const wasmJsPath = nodePath.join(process.cwd(), 'wasm', 'solvec_wasm.js');
       const wasmBinary = fs.readFileSync(wasmBinaryPath);
-      const parts = [process.cwd(), 'wasm', 'solvec_wasm'];
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const glue = require(parts.join(nodePath.sep)) as WasmModule;
-      const wasmInstance = await WebAssembly.instantiate(wasmBinary, glue.__wbindgen_placeholder__ ?? {});
-      glue.__wbg_init?.(wasmInstance);
+      const wasmJsContent = fs.readFileSync(wasmJsPath, 'utf8');
+      // Execute the glue code in current scope via Function constructor
+      // This bypasses Turbopack's static require() analysis entirely
+      const moduleExports: any = { exports: {} };
+      const fakeRequire = require;
+      const moduleFn = new Function('module', 'exports', 'require', '__dirname', '__filename', wasmJsContent);
+      moduleFn(moduleExports, moduleExports.exports, fakeRequire, 
+        nodePath.dirname(wasmJsPath), wasmJsPath);
+      const glue = moduleExports.exports as WasmModule;
+      // await glue.default(wasmBinary);
       wasmModule = glue;
       console.log('[SolVec] Rust HNSW engine loaded (Vercel)');
     } catch (e) {
